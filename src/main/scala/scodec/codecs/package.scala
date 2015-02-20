@@ -1196,7 +1196,7 @@ package object codecs {
    */
   final def hlist[L <: HList](l: L)(implicit toHListCodec: ToHListCodec[L]): toHListCodec.Out = toHListCodec(l)
 
-  final def log[A](logEncode: (A, Attempt[BitVector]) => Unit, logDecode: (BitVector, Attempt[DecodeResult[A]]) => Unit, codec: Codec[A]) = new Codec[A] {
+  final def log[A](logEncode: (A, Attempt[BitVector]) => Unit, logDecode: (BitVector, Attempt[DecodeResult[A]]) => Unit, codec: Codec[A]): Codec[A] = new Codec[A] {
     override def sizeBound = codec.sizeBound
     override def encode(a: A) = {
       val res = codec.encode(a)
@@ -1210,6 +1210,9 @@ package object codecs {
     }
     override def toString = codec.toString
   }
+
+  final def logFailures[A](logEncode: (A, Err) => Unit, logDecode: (BitVector, Err) => Unit, codec: Codec[A]): Codec[A] =
+    log((a, r) => r.fold(err => logEncode(a, err), _ => ()), (b, r) => r.fold(err => logDecode(b, err), _ => ()), codec)
 
   final def logStdOut[A](id: String, codec: Codec[A]): Codec[A] = log[A]((a, r) => println(s"$id: encoded $a to $r"), (b, r) => println(s"$id: decoded $b to $r"), codec)
 
