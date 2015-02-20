@@ -79,10 +79,13 @@ import shapeless.HList
  * @groupprio combinators 3
  *
  * @groupname tuples Tuple Support
- * @groupprio tuples 3
+ * @groupprio tuples 4
+ *
+ * @groupname logging Logging
+ * @groupprio logging 5
  *
  * @groupname crypto Cryptography
- * @groupprio crypto 4
+ * @groupprio crypto 6
  */
 package object codecs {
 
@@ -1196,7 +1199,17 @@ package object codecs {
    */
   final def hlist[L <: HList](l: L)(implicit toHListCodec: ToHListCodec[L]): toHListCodec.Out = toHListCodec(l)
 
-  final def log[A](logEncode: (A, Attempt[BitVector]) => Unit, logDecode: (BitVector, Attempt[DecodeResult[A]]) => Unit, codec: Codec[A]): Codec[A] = new Codec[A] {
+  /**
+   * Wraps a codec and adds logging of each encoding and decoding operation.
+   *
+   * The `logEncode` and `logDecode` functions are applied with the result of each encoding and decoding
+   * operation.
+   *
+   * This combinator is intended to be used to build a domain specific combinator. For example: {{{
+   * def log[A] = logBuilder[A]((a, r) => myLogger.debug(s"..."), (b, r) => myLogger.debug(s"..."))
+   * }}}
+   */
+  final def logBuilder[A](logEncode: (A, Attempt[BitVector]) => Unit, logDecode: (BitVector, Attempt[DecodeResult[A]]) => Unit)(codec: Codec[A]): Codec[A] = new Codec[A] {
     override def sizeBound = codec.sizeBound
     override def encode(a: A) = {
       val res = codec.encode(a)
@@ -1211,10 +1224,18 @@ package object codecs {
     override def toString = codec.toString
   }
 
-  final def logFailures[A](logEncode: (A, Err) => Unit, logDecode: (BitVector, Err) => Unit, codec: Codec[A]): Codec[A] =
-    log((a, r) => r.fold(err => logEncode(a, err), _ => ()), (b, r) => r.fold(err => logDecode(b, err), _ => ()), codec)
+  private val constUnit: Any => Unit = _ => ()
 
-  final def logStdOut[A](id: String, codec: Codec[A]): Codec[A] = log[A]((a, r) => println(s"$id: encoded $a to $r"), (b, r) => println(s"$id: decoded $b to $r"), codec)
+  final def logSuccessesBuilder[A](logEncode: (A, BitVector) => Unit, logDecode: (BitVector, DecodeResult[A]) => Unit)(codec: Codec[A]): Codec[A] =
+    logBuilder[A]((a, r) => r.fold(constUnit, logEncode(a, _)), (b, r) => r.fold(constUnit, logDecode(b, _)))(codec)
+
+  final def logFailuresBuilder[A](logEncode: (A, Err) => Unit, logDecode: (BitVector, Err) => Unit)(codec: Codec[A]): Codec[A] =
+    logBuilder[A]((a, r) => r.fold(logEncode(a, _), constUnit), (b, r) => r.fold(logDecode(b, _), constUnit))(codec)
+
+  final def logStdOut[A](codec: Codec[A], prefix: String = ""): Codec[A] = {
+    val pfx = if (prefix.isEmpty) "" else s"$prefix: "
+    logBuilder[A]((a, r) => println(s"${pfx}encoded $a to $r"), (b, r) => println(s"${pfx}decoded $b to $r"))(codec)
+  }
 
   /** Provides common implicit codecs. */
   object implicits extends ImplicitCodecs
