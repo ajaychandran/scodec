@@ -1196,6 +1196,23 @@ package object codecs {
    */
   final def hlist[L <: HList](l: L)(implicit toHListCodec: ToHListCodec[L]): toHListCodec.Out = toHListCodec(l)
 
+  final def log[A](log: (=> String) => Unit)(codec: Codec[A]): Codec[A] = new Codec[A] {
+    override def sizeBound = codec.sizeBound
+    override def encode(a: A) = {
+      val res = codec.encode(a)
+      log(s"encoded $a to $res")
+      res
+    }
+    override def decode(b: BitVector) = {
+      val res = codec.decode(b)
+      log(s"decoded $b to $res")
+      res
+    }
+    override def toString = codec.toString
+  }
+
+  final def logStdOut[A](id: String, codec: Codec[A]): Codec[A] = log(s => println(s"$id: $s"))(codec)
+
   /** Provides common implicit codecs. */
   object implicits extends ImplicitCodecs
 }
